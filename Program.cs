@@ -1,7 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
-
+// Load appsettings.Local.json nếu có (để chứa Google OAuth config mà không commit lên GitHub)
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 // Add controllers
 builder.Services.AddControllers();
 
@@ -19,13 +20,29 @@ builder.Services.AddCors(options =>
 // Kết nối SQL Server
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-
+// ── Google OAuth ────────────────────────────────────────────────
+//Thêm defaultScheme = "Cookies" vào đây
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultScheme          = "Cookies";
+    options.DefaultChallengeScheme = "Google";
+})
+.AddCookie("Cookies")
+.AddGoogle("Google", options =>
+{
+    options.ClientId     = builder.Configuration["Authentication:Google:ClientId"]!;
+    options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"]!;
+    options.CallbackPath = "/signin-google";
+});
+// ───────────────────────────────────────────────────────────────
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 
 app.UseCors("AllowAngular");
+app.UseAuthentication(); // 
+app.UseAuthorization();  // 
 
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();

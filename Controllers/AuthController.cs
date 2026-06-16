@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication;
+using System.Security.Claims;
 
 namespace PetCareBackend.Controllers
 {
@@ -14,10 +16,11 @@ namespace PetCareBackend.Controllers
     public class AuthController : ControllerBase
     {
         private readonly AppDbContext _context;
-
-        public AuthController(AppDbContext context)
+        private readonly IConfiguration _config;
+        public AuthController(AppDbContext context, IConfiguration config)
         {
             _context = context;
+            _config = config;
         }
 
         // ── DTOs (chỉ dùng nội bộ controller này) ────────────────────
@@ -133,5 +136,62 @@ namespace PetCareBackend.Controllers
                 VaiTro = "ChuNuoi"
             });
         }
+                // GET /api/auth/google-login
+        [HttpGet("google-login")]
+        public IActionResult GoogleLogin()
+        {
+            var props = new AuthenticationProperties
+            {
+                RedirectUri = Url.Action("GoogleCallback", "Auth")
+            };
+            return Challenge(props, "Google");
+        }
+
+        // GET /api/auth/google-callback
+        [HttpGet("google-callback")]
+        public async Task<IActionResult> GoogleCallback()
+        {
+            var result = await HttpContext.AuthenticateAsync("Cookies");
+            if (!result.Succeeded)
+                return Redirect("http://localhost:4200/login?error=google_failed");
+
+            var claims = result.Principal!.Claims.ToList();
+            var email  = claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
+            var hoTen  = claims.FirstOrDefault(c => c.Type == ClaimTypes.Name)?.Value;
+
+            if (string.IsNullOrEmpty(email))
+                return Redirect("http://localhost:4200/login?error=no_email");
+
+            // Tìm hoặc tạo ChuNuoi
+            var cn = await _context.ChuNuois
+                .FirstOrDefaultAsync(c => c.Email == email.ToLower());
+
+            if (cn == null)
+            {
+                cn = new ChuNuoi
+                {
+                    HoTen       = hoTen ?? email,
+                    Email       = email.ToLower(),
+                    MatKhau     = "",
+                    SoDienThoai = "",
+                    NgayDangKy  = DateOnly.FromDateTime(DateTime.Today)
+                };
+                _context.ChuNuois.Add(cn);
+                await _context.SaveChangesAsync();
+            }
+
+            await HttpContext.SignOutAsync("Cookies");
+
+            // Redirect về Angular kèm thông tin user (giống login thường, token để rỗng)
+            var redirectUrl = "http://localhost:4200/auth/google/callback" +
+                            $"?token=" +
+                            $"&hoTen={Uri.EscapeDataString(cn.HoTen)}" +
+                            $"&id={cn.MaCN}" +
+                            $"&loai=ChuNuoi" +
+                            $"&vaiTro=ChuNuoi";
+
+            return Redirect(redirectUrl);
+        }
     }
+    
 }

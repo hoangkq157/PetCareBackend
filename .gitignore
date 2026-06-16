@@ -40,3 +40,6 @@ appsettings.*.json
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+## local files chứa key, secret
+appsettings.Local.json
