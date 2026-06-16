@@ -1,0 +1,42 @@
+## Build output
+bin/
+obj/
+
+## Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Visual Studio Code
+.vscode/
+
+## Rider / JetBrains
+.idea/
+
+## NuGet
+*.nupkg
+packages/
+project.lock.json
+project.fragment.lock.json
+
+## Publish output
+publish/
+**/publish/
+
+## Logs
+*.log
+logs/
+
+## Sensitive configuration (connection strings, secrets)
+appsettings.json
+appsettings.*.json
+
+## Keep appsettings mẫu (không có thông tin nhạy cảm)
+!appsettings.example.json
+
+## OS
+.DS_Store
+Thumbs.db
+Desktop.ini
