@@ -47,11 +47,36 @@ namespace PetCareBackend.Controllers
             var existing = await _context.ChuNuois.FindAsync(id);
             if (existing == null) return NotFound();
 
-            existing.HoTen = item.HoTen;
+            if (!string.IsNullOrWhiteSpace(item.HoTen))
+                existing.HoTen = item.HoTen;
+            if (!string.IsNullOrWhiteSpace(item.Email))
+                existing.Email = item.Email;
             existing.SoDienThoai = item.SoDienThoai;
-            existing.Email = item.Email;
             existing.DiaChi = item.DiaChi;
+            if (!string.IsNullOrWhiteSpace(item.MatKhau))
+                existing.MatKhau = item.MatKhau;
 
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+
+        // PATCH: api/chuNuoi/5/doi-mat-khau
+        public class DoiMatKhauRequest
+        {
+            public string MatKhauCu  { get; set; } = string.Empty;
+            public string MatKhauMoi { get; set; } = string.Empty;
+        }
+
+        [HttpPatch("{id}/doi-mat-khau")]
+        public async Task<IActionResult> DoiMatKhau(int id, DoiMatKhauRequest req)
+        {
+            var existing = await _context.ChuNuois.FindAsync(id);
+            if (existing == null) return NotFound();
+
+            if (existing.MatKhau != req.MatKhauCu)
+                return BadRequest(new { message = "Mật khẩu cũ không đúng." });
+
+            existing.MatKhau = req.MatKhauMoi;
             await _context.SaveChangesAsync();
             return NoContent();
         }

@@ -5,6 +5,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Add controllers
 builder.Services.AddControllers();
 
+// HttpClient để gọi API AI (Gemini - endpoint tương thích OpenAI)
+builder.Services.AddHttpClient();
+
 // Add CORS - cho phép Angular gọi API
 builder.Services.AddCors(options =>
 {
