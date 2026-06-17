@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PetCareBackend.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -7,6 +8,13 @@ builder.Services.AddControllers();
 
 // HttpClient để gọi API AI (Gemini - endpoint tương thích OpenAI)
 builder.Services.AddHttpClient();
+
+// Bộ nhớ cache dùng để lưu mã OTP tạm thời (quên mật khẩu)
+builder.Services.AddMemoryCache();
+
+// Đăng ký service gửi email và lưu OTP
+builder.Services.AddTransient<IEmailService, EmailService>();
+builder.Services.AddSingleton<IOtpStoreService, OtpStoreService>();
 
 // Add CORS - cho phép Angular gọi API
 builder.Services.AddCors(options =>
