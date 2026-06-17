@@ -14,14 +14,7 @@ namespace PetCareBackend.Controllers
     public class AuthController : ControllerBase
     {
 
-        private readonly AppDbContext _context;
-        private readonly IConfiguration _config;
-        public AuthController(AppDbContext context, IConfiguration config)
-        {
-            _context = context;
-            _config = config;
-        }
-
+        private readonly AppDbContext     _context;
         private readonly IEmailService    _emailService;
         private readonly IOtpStoreService _otpStore;
 
@@ -33,7 +26,6 @@ namespace PetCareBackend.Controllers
             _context      = context;
             _emailService = emailService;
             _otpStore     = otpStore;
-
         }
 
         // ── DTOs ──────────────────────────────────────────────────────
