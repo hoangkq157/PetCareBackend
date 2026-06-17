@@ -1,20 +1,19 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+
 using Microsoft.AspNetCore.Authentication;
 using System.Security.Claims;
 
+using PetCareBackend.Services;
+
+
 namespace PetCareBackend.Controllers
 {
-    // ============================================================
-    // AuthController – xử lý đăng nhập / đăng ký cho cả hai loại
-    // user mà Angular đang gọi:
-    //   POST /api/auth/login    ← auth.service.ts gọi
-    //   POST /api/auth/register ← auth.service.ts gọi
-    // ============================================================
     [Route("api/[controller]")]
     [ApiController]
     public class AuthController : ControllerBase
     {
+
         private readonly AppDbContext _context;
         private readonly IConfiguration _config;
         public AuthController(AppDbContext context, IConfiguration config)
@@ -23,61 +22,88 @@ namespace PetCareBackend.Controllers
             _config = config;
         }
 
-        // ── DTOs (chỉ dùng nội bộ controller này) ────────────────────
+        private readonly IEmailService    _emailService;
+        private readonly IOtpStoreService _otpStore;
+
+        public AuthController(
+            AppDbContext context,
+            IEmailService emailService,
+            IOtpStoreService otpStore)
+        {
+            _context      = context;
+            _emailService = emailService;
+            _otpStore     = otpStore;
+
+        }
+
+        // ── DTOs ──────────────────────────────────────────────────────
 
         public class LoginRequest
         {
-            public string Email    { get; set; } = string.Empty;
-            public string MatKhau  { get; set; } = string.Empty;
+            public string Email   { get; set; } = string.Empty;
+            public string MatKhau { get; set; } = string.Empty;
         }
 
         public class RegisterRequest
         {
-            public string  HoTen        { get; set; } = string.Empty;
-            public string  Email        { get; set; } = string.Empty;
-            public string  MatKhau      { get; set; } = string.Empty;
-            public string? SoDienThoai  { get; set; }
-            public string? DiaChi       { get; set; }
+            public string  HoTen       { get; set; } = string.Empty;
+            public string  Email       { get; set; } = string.Empty;
+            public string  MatKhau     { get; set; } = string.Empty;
+            public string? SoDienThoai { get; set; }
+            public string? DiaChi      { get; set; }
         }
 
-        // ── Response khớp với UserInfo interface trong Angular ────────
-        // UserInfo { token, loai, id, hoTen, vaiTro }
+        public class QuenMatKhauRequest
+        {
+            public string Email { get; set; } = string.Empty;
+        }
+
+        public class XacMinhOtpRequest
+        {
+            public string Email { get; set; } = string.Empty;
+            public string Otp   { get; set; } = string.Empty;
+        }
+
+        public class DatLaiMatKhauRequest
+        {
+            public string Email          { get; set; } = string.Empty;
+            public string MatKhauMoi     { get; set; } = string.Empty;
+            public string XacNhanMatKhau { get; set; } = string.Empty;
+        }
+
         public class AuthResponse
         {
-            public string Token   { get; set; } = string.Empty; // để trống vì chưa dùng JWT thực
+            public string Token   { get; set; } = string.Empty;
             public string Loai    { get; set; } = string.Empty; // "NhanVien" | "ChuNuoi"
             public int    Id      { get; set; }
             public string HoTen   { get; set; } = string.Empty;
-            public string VaiTro  { get; set; } = string.Empty; // "Admin" | "NhanVien" | "ChuNuoi"
+            public string VaiTro  { get; set; } = string.Empty;
         }
 
         // ────────────────────────────────────────────────────────────────
         // POST /api/auth/login
-        // Thử tìm trong NhanVien trước, nếu không có thì tìm ChuNuoi
         // ────────────────────────────────────────────────────────────────
         [HttpPost("login")]
         public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest req)
         {
-            // 1. Tìm NhanVien (phải TrangThai = true mới được đăng nhập)
             var nv = await _context.NhanViens
                 .FirstOrDefaultAsync(n =>
-                    n.Email    == req.Email    &&
-                    n.MatKhau  == req.MatKhau  &&
+                    n.Email     == req.Email   &&
+                    n.MatKhau   == req.MatKhau &&
                     n.TrangThai == true);
 
             if (nv != null)
             {
                 return Ok(new AuthResponse
                 {
-                    Token  = "",           // chưa có JWT – để trống
+                    Token  = "",
                     Loai   = "NhanVien",
                     Id     = nv.MaNV,
                     HoTen  = nv.HoTen,
-                    VaiTro = nv.VaiTro     // "Admin" hoặc "NhanVien"
+                    VaiTro = nv.VaiTro
                 });
             }
 
-            // 2. Tìm ChuNuoi
             var cn = await _context.ChuNuois
                 .FirstOrDefaultAsync(c =>
                     c.Email   == req.Email &&
@@ -95,18 +121,15 @@ namespace PetCareBackend.Controllers
                 });
             }
 
-            // 3. Không tìm thấy
             return Unauthorized(new { message = "Email hoặc mật khẩu không đúng." });
         }
 
         // ────────────────────────────────────────────────────────────────
         // POST /api/auth/register
-        // Chỉ đăng ký ChuNuoi (NhanVien do Admin tạo qua /api/nhanvien)
         // ────────────────────────────────────────────────────────────────
         [HttpPost("register")]
         public async Task<ActionResult<AuthResponse>> Register([FromBody] RegisterRequest req)
         {
-            // Kiểm tra email đã tồn tại chưa (cả 2 bảng)
             bool emailExists =
                 await _context.NhanViens.AnyAsync(n => n.Email == req.Email) ||
                 await _context.ChuNuois.AnyAsync(c => c.Email  == req.Email);
@@ -136,6 +159,7 @@ namespace PetCareBackend.Controllers
                 VaiTro = "ChuNuoi"
             });
         }
+        // ── Google OAuth ───────────────────────────────────────────────
                 // GET /api/auth/google-login
         [HttpGet("google-login")]
         public IActionResult GoogleLogin()
@@ -191,6 +215,132 @@ namespace PetCareBackend.Controllers
                             $"&vaiTro=ChuNuoi";
 
             return Redirect(redirectUrl);
+        }
+        // ────────────────────────────────────────────────────────────────
+        // POST /api/auth/quenmatkhau  – Bước 1: gửi OTP về email
+        // ────────────────────────────────────────────────────────────────
+        [HttpPost("quenmatkhau")]
+        public async Task<IActionResult> QuenMatKhau([FromBody] QuenMatKhauRequest req)
+        {
+            if (string.IsNullOrWhiteSpace(req.Email))
+                return BadRequest(new { message = "Vui lòng nhập địa chỉ email." });
+
+            var email = req.Email.Trim().ToLower();
+
+            string? hoTen  = null;
+            string? loaiTk = null;
+
+            var cn = await _context.ChuNuois.FirstOrDefaultAsync(c => c.Email == email);
+            if (cn != null)
+            {
+                hoTen  = cn.HoTen;
+                loaiTk = "ChuNuoi";
+            }
+            else
+            {
+                var nv = await _context.NhanViens
+                    .FirstOrDefaultAsync(n => n.Email == email && n.TrangThai == true);
+                if (nv != null)
+                {
+                    hoTen  = nv.HoTen;
+                    loaiTk = "NhanVien";
+                }
+            }
+
+            // Luôn trả về message giống nhau để tránh lộ thông tin tài khoản
+            var thongBao = "Nếu email tồn tại trong hệ thống, mã OTP đã được gửi. Vui lòng kiểm tra hộp thư (kể cả thư mục Spam).";
+
+            if (hoTen != null && loaiTk != null)
+            {
+                var otp = _otpStore.TaoOtp(email, loaiTk);
+
+                try
+                {
+                    await _emailService.SendOtpEmailAsync(email, hoTen, otp);
+                }
+                catch (Exception ex)
+                {
+                    return StatusCode(500, new { message = $"Không thể gửi email: {ex.Message}" });
+                }
+            }
+
+            return Ok(new { message = thongBao });
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        // POST /api/auth/xacminhotp  – Bước 2: xác minh mã OTP
+        // ────────────────────────────────────────────────────────────────
+        [HttpPost("xacminhotp")]
+        public IActionResult XacMinhOtp([FromBody] XacMinhOtpRequest req)
+        {
+            if (string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Otp))
+                return BadRequest(new { message = "Thiếu email hoặc mã OTP." });
+
+            var email = req.Email.Trim().ToLower();
+            var entry = _otpStore.Lay(email);
+
+            if (entry == null)
+                return BadRequest(new { message = "Mã OTP đã hết hạn hoặc không tồn tại. Vui lòng yêu cầu mã mới." });
+
+            bool hopLe = _otpStore.XacMinh(email, req.Otp);
+            if (!hopLe)
+                return BadRequest(new { message = "Mã OTP không đúng. Vui lòng kiểm tra lại." });
+
+            return Ok(new { message = "Xác minh OTP thành công." });
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        // POST /api/auth/datlaimatkhau  – Bước 3: đặt mật khẩu mới
+        // ────────────────────────────────────────────────────────────────
+        [HttpPost("datlaimatkhau")]
+        public async Task<IActionResult> DatLaiMatKhau([FromBody] DatLaiMatKhauRequest req)
+        {
+            var email = req.Email.Trim().ToLower();
+
+            if (!_otpStore.DaXacMinh(email))
+                return BadRequest(new { message = "Bạn cần xác minh OTP trước khi đặt lại mật khẩu." });
+
+            if (string.IsNullOrWhiteSpace(req.MatKhauMoi) || req.MatKhauMoi.Length < 6)
+                return BadRequest(new { message = "Mật khẩu phải có ít nhất 6 ký tự." });
+
+            if (req.MatKhauMoi != req.XacNhanMatKhau)
+                return BadRequest(new { message = "Mật khẩu xác nhận không khớp." });
+
+            var entry = _otpStore.Lay(email);
+            if (entry == null)
+                return BadRequest(new { message = "Phiên xác minh đã hết hạn. Vui lòng thử lại từ đầu." });
+
+            bool daCapNhat = false;
+
+            if (entry.LoaiTk == "ChuNuoi")
+            {
+                var cn = await _context.ChuNuois.FirstOrDefaultAsync(c => c.Email == email);
+                if (cn != null)
+                {
+                    cn.MatKhau = req.MatKhauMoi;
+                    await _context.SaveChangesAsync();
+                    daCapNhat = true;
+                }
+            }
+            else if (entry.LoaiTk == "NhanVien")
+            {
+                var nv = await _context.NhanViens
+                    .FirstOrDefaultAsync(n => n.Email == email && n.TrangThai == true);
+                if (nv != null)
+                {
+                    nv.MatKhau = req.MatKhauMoi;
+                    await _context.SaveChangesAsync();
+                    daCapNhat = true;
+                }
+            }
+
+            if (!daCapNhat)
+                return BadRequest(new { message = "Không tìm thấy tài khoản." });
+
+            _otpStore.Xoa(email);
+
+            return Ok(new { message = "Mật khẩu đã được đặt lại thành công. Vui lòng đăng nhập." });
+
         }
     }
     
